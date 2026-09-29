@@ -11,6 +11,9 @@ const INITIAL_TOOL_NAMES = [
   "navigate",
   "hello",
   "system.ping",
+  "connectors.status",
+  "connectors.connect",
+  "connectors.listTools",
   "provider-api-request",
 ];
 

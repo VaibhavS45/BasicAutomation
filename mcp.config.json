@@ -1,0 +1,4 @@
+{
+  "_comment": "Framework-native MCP client config (Agent-Native merges mcp.config.json + MCP_SERVERS env + settings UI). Composio entry goes here ONLY after connectors.status passes. Until then servers stays empty so dev boots clean. Then add: {\"composio\": {\"type\": \"http\", \"url\": \"<MCP URL from connectors.status>\", \"headers\": {\"x-api-key\": \"${COMPOSIO_API_KEY}\"}}}",
+  "servers": {}
+}

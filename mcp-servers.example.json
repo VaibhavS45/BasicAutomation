@@ -1,0 +1,25 @@
+{
+  "_comment": "Same shape Claude Code / Cursor / Claude Desktop use. Every entry starts enabled:false. Test, then enable. Secrets: env or headers only, never in URLs. Verify package names/URLs before use.",
+  "mcpServers": {
+    "composio": {
+      "type": "http",
+      "url": "<MCP URL RETURNED BY connectors.status (session.mcp.url)>",
+      "headers": { "x-api-key": "${COMPOSIO_API_KEY}" },
+      "enabled": false
+    },
+    "github-official": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}" },
+      "enabled": false,
+      "_note": "Fallback if you skip Composio for GitHub. VERIFY the package is still maintained (the original reference server was moved/archived)."
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp@latest"],
+      "env": { "TAVILY_API_KEY": "${TAVILY_API_KEY}" },
+      "enabled": false,
+      "_note": "Optional: web search as MCP instead of our search.web action. VERIFY package name."
+    }
+  }
+}
