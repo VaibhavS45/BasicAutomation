@@ -3,7 +3,16 @@ import { createAuthPlugin } from "@agent-native/core/server";
 const rawAppTitle = "App";
 const appTitle = rawAppTitle === "{" + "{APP_TITLE}}" ? "Chat" : rawAppTitle;
 
+/**
+ * GitHub cannot sign in, so its webhook POST bypasses the session guard here
+ * and is gated by OUR HMAC check in server/routes/webhooks/github.post.ts
+ * instead. Keep this list to exactly this path: prefix matching also covers
+ * /webhooks/github/*, nothing else.
+ */
+export const GITHUB_WEBHOOK_PUBLIC_PATH = "/webhooks/github";
+
 export default createAuthPlugin({
+  publicPaths: [GITHUB_WEBHOOK_PUBLIC_PATH],
   workspaceAppPublicPaths: ["/"],
   marketing: {
     appName: appTitle,
