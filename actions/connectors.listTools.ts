@@ -1,6 +1,7 @@
 import { defineAction } from "@agent-native/core/action";
 import { z } from "zod";
 import { ensureSession, listMcpTools } from "../server/lib/connectors/composio-connector.js";
+import { env } from "../server/lib/env.js";
 import { audit } from "../server/lib/audit.js";
 
 export default defineAction({
@@ -16,7 +17,7 @@ export default defineAction({
   }),
   run: async ({ toolkit }) => {
     const session = await ensureSession();
-    const apiKey = process.env.COMPOSIO_API_KEY;
+    const apiKey = env.COMPOSIO_API_KEY;
     if (!apiKey) throw new Error("COMPOSIO_API_KEY missing");
     const tools = await listMcpTools(session.mcpUrl, apiKey);
     const filtered = toolkit

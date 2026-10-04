@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { defineAction } from "@agent-native/core/action";
+import { defineAction, type ActionRunContext } from "@agent-native/core/action";
 import { z } from "zod";
-import { requireApproval } from "../server/lib/approvals.js";
+import { isChatApproved, requireApproval } from "../server/lib/approvals.js";
 import { audit } from "../server/lib/audit.js";
 import { CALENDAR_BASE, googleFetch, isDryRun } from "../server/lib/google-auth.js";
 import type { ActionResult } from "../server/lib/types.js";
@@ -40,7 +40,7 @@ export default defineAction({
     addMeet: z.boolean().default(true).describe("Generate a Google Meet link"),
   }),
   needsApproval: (args: { attendees?: string[] }) => (args.attendees?.length ?? 0) > 0,
-  run: async ({ title, description, start, end, timeZone, attendees, addMeet }): Promise<ActionResult> => {
+  run: async ({ title, description, start, end, timeZone, attendees, addMeet }, ctx?: ActionRunContext): Promise<ActionResult> => {
     const tz = timeZone ?? defaultTimeZone();
     const body: Record<string, unknown> = {
       summary: title,
@@ -65,7 +65,9 @@ export default defineAction({
       await audit({ actor: "agent", action: "calendar.createEvent", input: { title, start, end, attendees }, outcome });
       return { ok: true, data: outcome };
     }
-    if (attendees.length > 0) {
+    // Chat path: the framework's needsApproval card already gated this call
+    // (ctx.approvedToolCallKey). File gate remains for trigger/script runs.
+    if (attendees.length > 0 && !isChatApproved(ctx)) {
       const decision = await requireApproval({
         action: "calendar.createEvent",
         summary: `Create "${title}" ${start} -> ${end} (${tz}) with Meet link, inviting ${attendees.join(", ")}`,

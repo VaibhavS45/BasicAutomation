@@ -30,4 +30,6 @@ pnpm install
 pnpm dev
 ```
 
+Open http://localhost:3000.
+
 Full docs: [agent-native.com/docs/template-chat](https://agent-native.com/docs/template-chat).

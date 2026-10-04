@@ -3,8 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encryptTokens } from "../../server/lib/google-auth.js";
+import { requireApproval } from "../../server/lib/approvals.js";
 import createEvent, { extractMeetLink } from "../calendar.createEvent.js";
 import findFreeSlots, { freeSlots } from "../calendar.findFreeSlots.js";
+
+vi.mock("../../server/lib/approvals.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../server/lib/approvals.js")>();
+  return {
+    ...original,
+    requireApproval: vi.fn(async () => ({ approved: true, approvalId: "test" })),
+  };
+});
+
+const requireApprovalMock = vi.mocked(requireApproval);
 
 const KEY = "ef".repeat(32);
 let tmp: string;
@@ -22,6 +33,7 @@ beforeEach(async () => {
     process.env.GOOGLE_TOKEN_STORE_PATH,
     encryptTokens({ access_token: "at", expiry_date: Date.now() + 3600_000 }, process.env),
   );
+  requireApprovalMock.mockClear().mockResolvedValue({ approved: true, approvalId: "test" });
 });
 
 afterEach(async () => {
@@ -61,6 +73,70 @@ describe("calendar.createEvent", () => {
       },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("live trigger run (no chat) with attendees goes through the file gate", async () => {
+    process.env.DRY_RUN = "false";
+    vi.stubGlobal(
+      "fetch",
+      (async () =>
+        new Response(JSON.stringify({ id: "evt-1", hangoutLink: "https://meet.google.com/a" }), {
+          status: 200,
+        })) as typeof fetch,
+    );
+    const res = await createEvent.run({
+      title: "Sync",
+      start: "2026-10-02T16:00:00+05:30",
+      end: "2026-10-02T16:30:00+05:30",
+      timeZone: "Asia/Kolkata",
+      attendees: ["ravi@example.com"],
+      addMeet: true,
+    });
+    expect(requireApprovalMock).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
+  });
+
+  it("live chat-approved run skips the file gate (framework card already gated it)", async () => {
+    process.env.DRY_RUN = "false";
+    vi.stubGlobal(
+      "fetch",
+      (async () =>
+        new Response(JSON.stringify({ id: "evt-1", hangoutLink: "https://meet.google.com/a" }), {
+          status: 200,
+        })) as typeof fetch,
+    );
+    const res = await createEvent.run(
+      {
+        title: "Sync",
+        start: "2026-10-02T16:00:00+05:30",
+        end: "2026-10-02T16:30:00+05:30",
+        timeZone: "Asia/Kolkata",
+        attendees: ["ravi@example.com"],
+        addMeet: true,
+      },
+      { approvedToolCallKey: "key-1", caller: "tool" },
+    );
+    expect(requireApprovalMock).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
+  });
+
+  it("live run without attendees needs no gate on either path", async () => {
+    process.env.DRY_RUN = "false";
+    vi.stubGlobal(
+      "fetch",
+      (async () =>
+        new Response(JSON.stringify({ id: "evt-1" }), { status: 200 })) as typeof fetch,
+    );
+    const res = await createEvent.run({
+      title: "Focus",
+      start: "2026-10-02T16:00:00+05:30",
+      end: "2026-10-02T16:30:00+05:30",
+      timeZone: "Asia/Kolkata",
+      attendees: [],
+      addMeet: false,
+    });
+    expect(requireApprovalMock).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
   });
 
   it("extractMeetLink prefers hangoutLink, falls back to video entryPoint", () => {

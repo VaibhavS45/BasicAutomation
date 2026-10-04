@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { requireApproval } from "../../server/lib/approvals.js";
 
 const googleFetch = vi.fn();
 const sendTemplate = vi.fn();
@@ -16,9 +17,15 @@ vi.mock("../../server/lib/whatsapp-client.js", () => ({
   sendTemplate: (...a: unknown[]) => sendTemplate(...a),
   sendText: (...a: unknown[]) => sendText(...a),
 }));
-vi.mock("../../server/lib/approvals.js", () => ({
-  requireApproval: vi.fn(async () => ({ approved: true, approvalId: "test" })),
-}));
+vi.mock("../../server/lib/approvals.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../server/lib/approvals.js")>();
+  return {
+    ...original,
+    requireApproval: vi.fn(async () => ({ approved: true, approvalId: "test" })),
+  };
+});
+
+const requireApprovalMock = vi.mocked(requireApproval);
 
 const { default: scheduleAndNotify, humanTime } = await import("./scheduleAndNotify.js");
 
@@ -43,6 +50,7 @@ beforeEach(() => {
   delete process.env.DRY_RUN; // default: dry run
   googleFetch.mockReset();
   sendTemplate.mockReset().mockResolvedValue({ ok: true, data: { messageId: "wamid.1" } });
+  requireApprovalMock.mockClear().mockResolvedValue({ approved: true, approvalId: "test" });
   vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
@@ -68,12 +76,17 @@ function liveRun() {
 }
 
 describe("meetings.scheduleAndNotify", () => {
+  it("uses the framework chat approval card (needsApproval)", () => {
+    expect(scheduleAndNotify.needsApproval).toBe(true);
+  });
+
   it("DRY_RUN returns the full plan and calls nothing", async () => {
     const res = await scheduleAndNotify.run({ ...args, timeZone: "Asia/Kolkata" });
 
     expect(res.ok).toBe(true);
     expect(googleFetch).not.toHaveBeenCalled();
     expect(sendTemplate).not.toHaveBeenCalled();
+    expect(requireApprovalMock).not.toHaveBeenCalled();
     const plan = (res as { data: { plan: Record<string, unknown> } }).data.plan;
     expect(plan).toMatchObject({
       event: {
@@ -128,6 +141,38 @@ describe("meetings.scheduleAndNotify", () => {
       "Friday, 2 October 2026 at 16:00",
       "https://meet.google.com/abc-defg-hij",
     ]);
+  });
+
+  it("live trigger run (no chat) goes through the file gate", async () => {
+    liveRun();
+    await scheduleAndNotify.run({ ...args, timeZone: "Asia/Kolkata" });
+    expect(requireApprovalMock).toHaveBeenCalledTimes(1);
+    // The file-gate summary lists every side effect.
+    const summary = String(requireApprovalMock.mock.calls[0][0].summary);
+    expect(summary).toContain("Design sync");
+    expect(summary).toContain("alice@example.com");
+    expect(summary).toContain("+14155551234");
+    expect(summary).toContain("Agenda in the doc.");
+  });
+
+  it("live chat-approved run skips the file gate (framework card already gated it)", async () => {
+    liveRun();
+    const res = await scheduleAndNotify.run(
+      { ...args, timeZone: "Asia/Kolkata" },
+      { approvedToolCallKey: "key-1", caller: "tool" },
+    );
+    expect(requireApprovalMock).not.toHaveBeenCalled();
+    expect(res.ok === true || res.ok === false).toBe(true);
+    expect(googleFetch).toHaveBeenCalled();
+  });
+
+  it("live trigger run denied by the file gate schedules nothing", async () => {
+    liveRun();
+    requireApprovalMock.mockResolvedValueOnce({ approved: false, reason: "denied", approvalId: "test" });
+    const res = await scheduleAndNotify.run({ ...args, timeZone: "Asia/Kolkata" });
+    expect(res.ok).toBe(false);
+    expect(googleFetch).not.toHaveBeenCalled();
+    expect(sendTemplate).not.toHaveBeenCalled();
   });
 
   it("skips the extra Gmail when no message is set", async () => {

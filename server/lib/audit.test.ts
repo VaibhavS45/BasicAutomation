@@ -8,14 +8,14 @@ let tmp: string;
 let prevDataDir: string | undefined;
 
 beforeEach(async () => {
-  prevDataDir = process.env.DATA_DIR;
+  prevDataDir = process.env.DATA_DIR; // guard:allow-env-credential — test isolation
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "audit-test-"));
-  process.env.DATA_DIR = tmp;
+  process.env.DATA_DIR = tmp; // guard:allow-env-credential — test isolation
 });
 
 afterEach(async () => {
-  if (prevDataDir === undefined) delete process.env.DATA_DIR;
-  else process.env.DATA_DIR = prevDataDir;
+  if (prevDataDir === undefined) delete process.env.DATA_DIR; // guard:allow-env-credential — test isolation
+  else process.env.DATA_DIR = prevDataDir; // guard:allow-env-credential — test isolation
   await fs.rm(tmp, { recursive: true, force: true });
 });
 

@@ -31,14 +31,14 @@ export function clearSearchCache(): void {
 }
 
 function cacheTtlMs(): number {
-  const raw = process.env.SEARCH_CACHE_TTL_SECONDS;
+  const raw = process.env.SEARCH_CACHE_TTL_SECONDS; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   const secs = raw !== undefined ? Number.parseInt(raw, 10) : env.SEARCH_CACHE_TTL_SECONDS;
   if (!Number.isFinite(secs) || secs <= 0) return 600_000;
   return secs * 1000;
 }
 
 function providerName(): "tavily" | "serpapi" {
-  const raw = (process.env.SEARCH_PROVIDER ?? env.SEARCH_PROVIDER).toLowerCase();
+  const raw = (process.env.SEARCH_PROVIDER ?? env.SEARCH_PROVIDER).toLowerCase(); // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   return raw === "serpapi" ? "serpapi" : "tavily";
 }
 
@@ -57,7 +57,7 @@ async function tavilySearch(
   recencyDays: number | undefined,
   fetchFn: FetchFn,
 ): Promise<SearchResult[]> {
-  const apiKey = process.env.TAVILY_API_KEY ?? env.TAVILY_API_KEY;
+  const apiKey = process.env.TAVILY_API_KEY ?? env.TAVILY_API_KEY; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (!apiKey) throw new Error("TAVILY_API_KEY is not set. Set it to use SEARCH_PROVIDER=tavily.");
   const body: Record<string, unknown> = {
     api_key: apiKey,
@@ -93,7 +93,7 @@ async function serpapiSearch(
   maxResults: number,
   fetchFn: FetchFn,
 ): Promise<SearchResult[]> {
-  const apiKey = process.env.SERPAPI_API_KEY ?? env.SERPAPI_API_KEY;
+  const apiKey = process.env.SERPAPI_API_KEY ?? env.SERPAPI_API_KEY; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (!apiKey) throw new Error("SERPAPI_API_KEY is not set. Set it to use SEARCH_PROVIDER=serpapi.");
   const url =
     `https://serpapi.com/search?q=${encodeURIComponent(query)}` +

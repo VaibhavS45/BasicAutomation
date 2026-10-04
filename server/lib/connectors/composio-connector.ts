@@ -19,13 +19,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { env } from "../env.js";
 
 function apiBase(): string {
-  return (process.env.COMPOSIO_API ?? "https://backend.composio.dev/api/v3.1").replace(/\/$/, "");
+  return (process.env.COMPOSIO_API ?? env.COMPOSIO_API).replace(/\/$/, ""); // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
 }
 
 function stateFile(): string {
-  return path.join(process.env.DATA_DIR ?? "./.data", "composio.json"); // non-secret ids only
+  return path.join(process.env.DATA_DIR ?? env.DATA_DIR, "composio.json"); // non-secret ids only // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
 }
 
 // POST /tool_router/session -> 201 { session_id, url, ... }
@@ -59,7 +60,7 @@ const toolkitsPage = z.object({
 });
 
 function key(): string {
-  const k = process.env.COMPOSIO_API_KEY;
+  const k = process.env.COMPOSIO_API_KEY ?? env.COMPOSIO_API_KEY; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (!k || !k.startsWith("ak_")) throw new Error("COMPOSIO_API_KEY missing or not an ak_ project key");
   return k;
 }

@@ -2,10 +2,32 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { requireApproval } from "../../server/lib/approvals.js";
+import { sendTemplate } from "../../server/lib/whatsapp-client.js";
 import sendAction, {
   WINDOW_24H_ERROR,
   whatsappSendSchema,
 } from "./send.js";
+
+vi.mock("../../server/lib/approvals.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../server/lib/approvals.js")>();
+  return {
+    ...original,
+    requireApproval: vi.fn(async () => ({ approved: true, approvalId: "test" })),
+  };
+});
+
+vi.mock("../../server/lib/whatsapp-client.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../server/lib/whatsapp-client.js")>();
+  return {
+    ...original,
+    sendTemplate: vi.fn(async () => ({ ok: true, data: { messageId: "wamid.1" } })),
+    sendText: vi.fn(async () => ({ ok: true, data: { messageId: "wamid.1" } })),
+  };
+});
+
+const requireApprovalMock = vi.mocked(requireApproval);
+const sendTemplateMock = vi.mocked(sendTemplate);
 
 let tmp: string;
 const prevEnv: Record<string, string | undefined> = {};
@@ -27,6 +49,8 @@ beforeEach(async () => {
   saveEnv(...ENV_KEYS);
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "wa-send-test-"));
   process.env.DATA_DIR = tmp;
+  requireApprovalMock.mockClear().mockResolvedValue({ approved: true, approvalId: "test" });
+  sendTemplateMock.mockClear().mockResolvedValue({ ok: true, data: { messageId: "wamid.1" } });
 });
 
 afterEach(async () => {
@@ -92,7 +116,33 @@ describe("whatsapp.send run", () => {
     expect(res).toEqual({ ok: false, error: WINDOW_24H_ERROR });
     expect(res.error).toMatch(/24h/);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(requireApprovalMock).not.toHaveBeenCalled();
     // No approval file created — the guard returns before the gate.
     expect(await fs.readdir(tmp)).not.toContain("approvals");
+  });
+
+  it("live trigger run (no chat) goes through the file gate", async () => {
+    process.env.DRY_RUN = "false";
+    const res = await sendAction.run({
+      to: "+14155551234",
+      template: { name: "hello_world", language: "en_US", params: ["Alex"] },
+    });
+    expect(requireApprovalMock).toHaveBeenCalledTimes(1);
+    expect(sendTemplateMock).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
+  });
+
+  it("live chat-approved run skips the file gate (framework card already gated it)", async () => {
+    process.env.DRY_RUN = "false";
+    const res = await sendAction.run(
+      {
+        to: "+14155551234",
+        template: { name: "hello_world", language: "en_US", params: ["Alex"] },
+      },
+      { approvedToolCallKey: "key-1", caller: "tool" },
+    );
+    expect(requireApprovalMock).not.toHaveBeenCalled();
+    expect(sendTemplateMock).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
   });
 });
