@@ -87,6 +87,19 @@ describe("trigger engine", () => {
     expect(callsAfterReset).toBe(0);
   });
 
+  it("concurrent same-id emits run the agent once (in-flight guard)", async () => {
+    let calls = 0;
+    setAgentRunner(async () => {
+      calls += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return { ok: true, runId: "run-1" };
+    });
+    const event = makeEvent({ id: "github:concurrent-1" });
+    const [a, b] = await Promise.all([emit(event), emit(event)]);
+    expect([a.status, b.status].sort()).toEqual(["duplicate", "processed"]);
+    expect(calls).toBe(1);
+  });
+
   it("drops events from the agent's own account (loop guard)", async () => {
     let calls = 0;
     setAgentRunner(async () => {

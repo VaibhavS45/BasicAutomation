@@ -343,9 +343,16 @@ function release(): void {
 export function resetEngineForTests(): void {
   active = 0;
   waiting.length = 0;
+  inflight.clear();
   resetAgentRunner();
   resetRunnerDeps();
 }
+
+// In-flight ids: closes the read-then-write race when two deliveries with
+// the same id arrive concurrently (the file check alone can't see the
+// other call before it writes). Synchronous add — no await between the
+// check and the insert, so the second caller always observes the first.
+const inflight = new Set<string>();
 
 // --- persistent dedupe store ---
 function dataDir(): string {
@@ -421,6 +428,27 @@ export async function emit(event: TriggerEvent): Promise<EmitOutcome> {
   }
 
   // (1) dedupe — persistent so redelivered webhooks don't rerun the agent.
+  // The in-flight set covers concurrent same-id arrivals; the file covers
+  // redeliveries across restarts. Both report the same duplicate status.
+  if (inflight.has(event.id)) {
+    await audit({
+      actor: event.actor ?? event.source,
+      action: "trigger.duplicate",
+      input: { id: event.id, type: event.type },
+      outcome: { status: "duplicate" },
+    });
+    return { status: "duplicate", detail: `duplicate id ${event.id}` };
+  }
+  inflight.add(event.id);
+  try {
+    return await emitInner(event);
+  } finally {
+    inflight.delete(event.id);
+  }
+}
+
+/** Post-dedupe emit pipeline (own-actor drop, audit, route, run, audit). */
+async function emitInner(event: TriggerEvent): Promise<EmitOutcome> {
   const seen = await readDedupe();
   const now = Date.now();
   const ttl = dedupeTtlMs();
