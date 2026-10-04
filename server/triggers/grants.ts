@@ -29,6 +29,14 @@ export const CUSTOM_ACTIONS = {
   searchWeb: "search.web",
   searchFetchPage: "search.fetchPage",
   meetingsScheduleAndNotify: "meetings.scheduleAndNotify",
+  githubGetIssue: "github.getIssue",
+  githubListIssues: "github.listIssues",
+  githubGetPullRequest: "github.getPullRequest",
+  githubListPRFiles: "github.listPRFiles",
+  githubGetPRDiff: "github.getPRDiff",
+  githubCreateIssue: "github.createIssue",
+  githubCommentOnIssue: "github.commentOnIssue",
+  githubSubmitReview: "github.submitReview",
 } as const;
 
 export interface PlaybookGrant {
@@ -40,10 +48,10 @@ export interface PlaybookGrant {
  * Which tools each trigger playbook may call. Least privilege:
  * - A GitHub-triggered run NEVER gets gmail/whatsapp send.
  * - An email-triggered run NEVER gets GitHub write actions.
- * - Raw Composio write slugs are NOT granted to playbooks; only our
- *   approval-gated wrappers are reachable (wrappers themselves call Composio).
- *   The raw slug lists below stay for reference/verification and for the
- *   boundary check in tests; playbooks resolve to `custom` + read slugs.
+ * - GitHub playbooks use ONLY our own approval-gated wrappers
+ *   (actions/github.* via @octokit/rest); raw Composio slugs are never
+ *   granted. The raw slug lists above stay for reference/verification
+ *   (confirm via connectors.listTools) and for the boundary check in tests.
  */
 export const PLAYBOOK_GRANTS: Record<string, PlaybookGrant> = {
   "email.received": {
@@ -60,20 +68,41 @@ export const PLAYBOOK_GRANTS: Record<string, PlaybookGrant> = {
     ],
   },
   "github.issue.opened": {
-    composio: [...READ_ONLY.github, ...WRITE_NEEDS_APPROVAL.githubComment],
-    custom: [CUSTOM_ACTIONS.searchWeb, CUSTOM_ACTIONS.searchFetchPage],
+    composio: [],
+    custom: [
+      CUSTOM_ACTIONS.githubGetIssue,
+      CUSTOM_ACTIONS.githubListIssues,
+      CUSTOM_ACTIONS.githubCommentOnIssue,
+      CUSTOM_ACTIONS.searchWeb,
+      CUSTOM_ACTIONS.searchFetchPage,
+    ],
   },
   "github.pr.opened": {
-    composio: [...READ_ONLY.github, ...WRITE_NEEDS_APPROVAL.githubReview],
-    custom: [],
+    composio: [],
+    custom: [
+      CUSTOM_ACTIONS.githubGetPullRequest,
+      CUSTOM_ACTIONS.githubListPRFiles,
+      CUSTOM_ACTIONS.githubGetPRDiff,
+      CUSTOM_ACTIONS.githubSubmitReview,
+    ],
   },
   "github.pr.review_requested": {
-    composio: [...READ_ONLY.github, ...WRITE_NEEDS_APPROVAL.githubReview],
-    custom: [],
+    composio: [],
+    custom: [
+      CUSTOM_ACTIONS.githubGetPullRequest,
+      CUSTOM_ACTIONS.githubListPRFiles,
+      CUSTOM_ACTIONS.githubGetPRDiff,
+      CUSTOM_ACTIONS.githubSubmitReview,
+    ],
   },
   "github.issue_comment.created": {
-    composio: [...READ_ONLY.github, ...WRITE_NEEDS_APPROVAL.githubComment],
-    custom: [CUSTOM_ACTIONS.searchWeb],
+    composio: [],
+    custom: [
+      CUSTOM_ACTIONS.githubGetIssue,
+      CUSTOM_ACTIONS.githubGetPullRequest,
+      CUSTOM_ACTIONS.githubCommentOnIssue,
+      CUSTOM_ACTIONS.searchWeb,
+    ],
   },
 };
 

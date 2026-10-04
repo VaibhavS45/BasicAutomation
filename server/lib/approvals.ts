@@ -47,7 +47,7 @@ function dataDir(): string {
   return process.env.DATA_DIR ?? env.DATA_DIR; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
 }
 
-function isDryRun(): boolean {
+export function isDryRun(): boolean {
   const raw = process.env.DRY_RUN; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (raw !== undefined) {
     const s = raw.toLowerCase().trim();

@@ -70,6 +70,14 @@ const TRIGGER_ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   "search.web": () => import("../../actions/search.web.js"),
   "search.fetchPage": () => import("../../actions/search.fetchPage.js"),
   "meetings.scheduleAndNotify": () => import("../../actions/meetings/scheduleAndNotify.js"),
+  "github.getIssue": () => import("../../actions/github.getIssue.js"),
+  "github.listIssues": () => import("../../actions/github.listIssues.js"),
+  "github.getPullRequest": () => import("../../actions/github.getPullRequest.js"),
+  "github.listPRFiles": () => import("../../actions/github.listPRFiles.js"),
+  "github.getPRDiff": () => import("../../actions/github.getPRDiff.js"),
+  "github.createIssue": () => import("../../actions/github.createIssue.js"),
+  "github.commentOnIssue": () => import("../../actions/github.commentOnIssue.js"),
+  "github.submitReview": () => import("../../actions/github.submitReview.js"),
 };
 
 /** Wall-clock ceiling for one trigger agent turn (abort, audited, no hang). */
