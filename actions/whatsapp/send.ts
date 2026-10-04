@@ -7,7 +7,7 @@ import type { ActionResult } from "../../server/lib/types.js";
 import { sendTemplate, sendText } from "../../server/lib/whatsapp-client.js";
 
 /** E.164 via libphonenumber-js: parse, validate, normalize. */
-const e164 = z.string().transform((v, ctx) => {
+export const e164Phone = z.string().transform((v, ctx) => {
   let digits: string;
   try {
     const parsed = parsePhoneNumber(v);
@@ -31,7 +31,7 @@ const e164 = z.string().transform((v, ctx) => {
 
 export const whatsappSendSchema = z
   .object({
-    to: e164.describe("Recipient phone number in E.164 (e.g. +14155551234)"),
+    to: e164Phone.describe("Recipient phone number in E.164 (e.g. +14155551234)"),
     text: z
       .string()
       .min(1)
