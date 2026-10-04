@@ -109,12 +109,20 @@ describe("trigger engine", () => {
     // Email-triggered runs must NOT have GitHub write actions.
     expect(isAllowed("email.received", "GITHUB_CREATE_AN_ISSUE_COMMENT")).toBe(false);
     expect(isAllowed("email.received", "GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST")).toBe(false);
+    expect(isAllowed("email.received", "github.commentOnIssue")).toBe(false);
+    expect(isAllowed("email.received", "github.submitReview")).toBe(false);
     // Unknown playbooks deny everything.
     expect(isAllowed("nope.unknown", "search.web")).toBe(false);
     // Sanity: expected grants exist.
     expect(isAllowed("email.received", "search.web")).toBe(true);
     expect(isAllowed("github.issue.opened", "search.web")).toBe(true);
-    expect(isAllowed("github.pr.review_requested", "GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST")).toBe(true);
+    // GitHub playbooks use our own wrappers, never raw Composio slugs.
+    expect(isAllowed("github.pr.review_requested", "github.submitReview")).toBe(true);
+    expect(isAllowed("github.pr.opened", "github.getPRDiff")).toBe(true);
+    expect(isAllowed("github.issue.opened", "github.commentOnIssue")).toBe(true);
+    expect(isAllowed("github.issue_comment.created", "github.commentOnIssue")).toBe(true);
+    expect(isAllowed("github.pr.review_requested", "GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST")).toBe(false);
+    expect(isAllowed("github.issue.opened", "GITHUB_CREATE_AN_ISSUE_COMMENT")).toBe(false);
 
     await expect(
       invokePlaybookTool("github.issue.opened", "GMAIL_SEND_EMAIL", async () => "sent"),
