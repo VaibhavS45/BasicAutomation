@@ -1,7 +1,7 @@
-import { defineAction } from "@agent-native/core/action";
+import { defineAction, type ActionRunContext } from "@agent-native/core/action";
 import { parsePhoneNumber } from "libphonenumber-js";
 import { z } from "zod";
-import { requireApproval } from "../../server/lib/approvals.js";
+import { isChatApproved, requireApproval } from "../../server/lib/approvals.js";
 import { audit, redactSecrets } from "../../server/lib/audit.js";
 import type { ActionResult } from "../../server/lib/types.js";
 import { sendTemplate, sendText } from "../../server/lib/whatsapp-client.js";
@@ -74,7 +74,7 @@ export default defineAction({
   schema: whatsappSendSchema,
   http: { method: "POST" },
   needsApproval: true,
-  run: async (args: WhatsAppSendOutput): Promise<ActionResult> => {
+  run: async (args: WhatsAppSendOutput, ctx?: ActionRunContext): Promise<ActionResult> => {
     const kind = args.template ? "template" : "text";
     const redactedInput = redactSecrets({
       to: args.to,
@@ -102,20 +102,24 @@ export default defineAction({
       return { ok: false, error: WINDOW_24H_ERROR };
     }
 
-    const decision = await requireApproval({
-      action: "whatsapp.send",
-      summary: `Send WhatsApp ${kind} to ${args.to}`,
-      payload: redactedInput,
-    });
-    if (!decision.approved) {
-      const error = `Not approved (${decision.reason ?? "denied"}). Message not sent.`;
-      await audit({
-        actor: "agent",
+    // Chat path: the framework's needsApproval card already gated this call
+    // (ctx.approvedToolCallKey). File gate remains for trigger/script runs.
+    if (!isChatApproved(ctx)) {
+      const decision = await requireApproval({
         action: "whatsapp.send",
-        input: redactedInput,
-        outcome: { ok: false, error },
+        summary: `Send WhatsApp ${kind} to ${args.to}`,
+        payload: redactedInput,
       });
-      return { ok: false, error };
+      if (!decision.approved) {
+        const error = `Not approved (${decision.reason ?? "denied"}). Message not sent.`;
+        await audit({
+          actor: "agent",
+          action: "whatsapp.send",
+          input: redactedInput,
+          outcome: { ok: false, error },
+        });
+        return { ok: false, error };
+      }
     }
 
     const result = args.template

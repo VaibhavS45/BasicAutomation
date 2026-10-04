@@ -36,18 +36,19 @@ interface ApprovalRecord {
 // Framework note: Agent-Native already ships a human-in-the-loop primitive —
 // `needsApproval` on defineAction + SQL-backed tool-approval store
 // (dist/agent/tool-approval-store.js, set-tool-approval-policy action).
-// That covers agent tool calls inside a thread/turn. This file is the
-// trigger/script-side gate from CONTRACT.md: file-based pending approvals in
-// DATA_DIR so Yashwanth's wrappers and server/triggers can use it without a
-// thread context. Risky actions should ALSO set `needsApproval: true` on
-// their defineAction (Phase 2+ wrappers will do that).
+// That chat approval card is the only approval UI: it covers agent tool
+// calls inside a thread/turn (run() then receives ctx.approvedToolCallKey).
+// This file is the trigger/script-side gate from CONTRACT.md: file-based
+// pending approvals in DATA_DIR for runs with no chat. Risky actions keep
+// `needsApproval: true` on their defineAction AND call requireApproval()
+// only when there was no chat approval (see isChatApproved).
 
 function dataDir(): string {
-  return process.env.DATA_DIR ?? env.DATA_DIR;
+  return process.env.DATA_DIR ?? env.DATA_DIR; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
 }
 
 function isDryRun(): boolean {
-  const raw = process.env.DRY_RUN;
+  const raw = process.env.DRY_RUN; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (raw !== undefined) {
     const s = raw.toLowerCase().trim();
     return !["0", "false", "no", "off"].includes(s);
@@ -81,6 +82,50 @@ async function writeRecord(record: ApprovalRecord): Promise<void> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * True when the framework's chat approval card already gated this call:
+ * the agent loop re-issues approved turns with ctx.approvedToolCallKey.
+ * Actions skip their inner requireApproval() in that case and keep it
+ * only for trigger/script runs that have no chat (no key).
+ */
+export function isChatApproved(ctx?: { approvedToolCallKey?: string }): boolean {
+  return Boolean(ctx?.approvedToolCallKey);
+}
+
+/**
+ * Persist a pending approval WITHOUT waiting for a decision. Trigger-run
+ * agent loops (no chat card to click) use this from their approval hook:
+ * the write tool is paused, the id is audited, and a human approves later
+ * via approveApproval(id) / denyApproval(id). Never auto-approves.
+ */
+export async function createPendingApproval(
+  input: RequireApprovalInput,
+): Promise<{ approvalId: string; expiresAt: number }> {
+  const id = input.approvalId ?? randomUUID();
+  const ttl = input.ttlMs ?? APPROVAL_TTL_MS;
+  const now = Date.now();
+  const existing = await readRecord(id);
+  if (!existing) {
+    const record: ApprovalRecord = {
+      id,
+      action: input.action,
+      summary: input.summary,
+      payload: redactSecrets(input.payload ?? null),
+      status: "pending",
+      createdAt: new Date(now).toISOString(),
+      expiresAt: now + ttl,
+    };
+    await writeRecord(record);
+    console.log(
+      `[approvals] pending ${id}: ${input.action} — ${input.summary} (expires in ${Math.round(ttl / 1000)}s; approve via approveApproval("${id}"))`,
+    );
+  }
+  const stored = (await readRecord(id)) ?? {
+    expiresAt: now + ttl,
+  };
+  return { approvalId: id, expiresAt: stored.expiresAt };
+}
+
+/**
  * Gate a risky action. DRY_RUN short-circuits BEFORE any network call:
  * logs the redacted payload and auto-approves the gate (the caller must
  * still skip the send and log instead of sending).
@@ -103,27 +148,10 @@ export async function requireApproval(
 
   const id = input.approvalId ?? randomUUID();
   const ttl = input.ttlMs ?? APPROVAL_TTL_MS;
-  const now = Date.now();
 
-  let record = await readRecord(id);
-  if (!record) {
-    record = {
-      id,
-      action: input.action,
-      summary: input.summary,
-      payload: redactSecrets(input.payload ?? null),
-      status: "pending",
-      createdAt: new Date(now).toISOString(),
-      expiresAt: now + ttl,
-    };
-    await writeRecord(record);
-    console.log(
-      `[approvals] pending ${id}: ${input.action} — ${input.summary} (expires in ${Math.round(ttl / 1000)}s; approve via approveApproval("${id}"))`,
-    );
-  }
-
+  const { expiresAt } = await createPendingApproval({ ...input, approvalId: id });
+  const deadline = expiresAt;
   const pollMs = ttl <= 2000 ? 25 : 250;
-  const deadline = record.expiresAt;
   for (;;) {
     const current = await readRecord(id);
     if (!current) {

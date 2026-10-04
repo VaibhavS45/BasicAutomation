@@ -14,6 +14,7 @@ const coreRequire = createRequire(
 );
 
 export default defineConfig({
+  server: { port: 3000, strictPort: true },
   optimizeDeps: {
     entries: [
       "app/entry.client.tsx",

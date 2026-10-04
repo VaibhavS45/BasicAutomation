@@ -6,6 +6,7 @@
 
 import { promises as dns } from "node:dns";
 import type { FetchFn } from "./providers.js";
+import { env } from "../env.js";
 
 export type DnsLookup = (host: string) => Promise<string[]>;
 
@@ -59,12 +60,12 @@ export function isBlockedHostname(host: string): boolean {
 }
 
 function maxBytes(): number {
-  const raw = process.env.FETCH_PAGE_MAX_BYTES;
+  const raw = process.env.FETCH_PAGE_MAX_BYTES; // guard:allow-env-credential — deploy default from env.ts; process.env read is the test-isolation override
   if (raw !== undefined) {
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n > 0) return n;
   }
-  return 1_000_000;
+  return env.FETCH_PAGE_MAX_BYTES;
 }
 
 export interface SafeFetchResult {

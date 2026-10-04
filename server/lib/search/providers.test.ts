@@ -7,29 +7,29 @@ let prevSerp: string | undefined;
 let prevTtl: string | undefined;
 
 beforeEach(() => {
-  prevProvider = process.env.SEARCH_PROVIDER;
-  prevTavily = process.env.TAVILY_API_KEY;
-  prevSerp = process.env.SERPAPI_API_KEY;
-  prevTtl = process.env.SEARCH_CACHE_TTL_SECONDS;
+  prevProvider = process.env.SEARCH_PROVIDER; // guard:allow-env-credential — test isolation
+  prevTavily = process.env.TAVILY_API_KEY; // guard:allow-env-credential — test isolation
+  prevSerp = process.env.SERPAPI_API_KEY; // guard:allow-env-credential — test isolation
+  prevTtl = process.env.SEARCH_CACHE_TTL_SECONDS; // guard:allow-env-credential — test isolation
   clearSearchCache();
 });
 
 afterEach(() => {
-  if (prevProvider === undefined) delete process.env.SEARCH_PROVIDER;
-  else process.env.SEARCH_PROVIDER = prevProvider;
-  if (prevTavily === undefined) delete process.env.TAVILY_API_KEY;
-  else process.env.TAVILY_API_KEY = prevTavily;
-  if (prevSerp === undefined) delete process.env.SERPAPI_API_KEY;
-  else process.env.SERPAPI_API_KEY = prevSerp;
-  if (prevTtl === undefined) delete process.env.SEARCH_CACHE_TTL_SECONDS;
-  else process.env.SEARCH_CACHE_TTL_SECONDS = prevTtl;
+  if (prevProvider === undefined) delete process.env.SEARCH_PROVIDER; // guard:allow-env-credential — test isolation
+  else process.env.SEARCH_PROVIDER = prevProvider; // guard:allow-env-credential — test isolation
+  if (prevTavily === undefined) delete process.env.TAVILY_API_KEY; // guard:allow-env-credential — test isolation
+  else process.env.TAVILY_API_KEY = prevTavily; // guard:allow-env-credential — test isolation
+  if (prevSerp === undefined) delete process.env.SERPAPI_API_KEY; // guard:allow-env-credential — test isolation
+  else process.env.SERPAPI_API_KEY = prevSerp; // guard:allow-env-credential — test isolation
+  if (prevTtl === undefined) delete process.env.SEARCH_CACHE_TTL_SECONDS; // guard:allow-env-credential — test isolation
+  else process.env.SEARCH_CACHE_TTL_SECONDS = prevTtl; // guard:allow-env-credential — test isolation
   clearSearchCache();
 });
 
 describe("search.web provider + cache", () => {
   it("maps Tavily results and caches by query", async () => {
-    process.env.SEARCH_PROVIDER = "tavily";
-    process.env.TAVILY_API_KEY = "tv_test";
+    process.env.SEARCH_PROVIDER = "tavily"; // guard:allow-env-credential — test isolation
+    process.env.TAVILY_API_KEY = "tv_test"; // guard:allow-env-credential — test isolation
     let calls = 0;
     const fetchFn = (async () => {
       calls += 1;
@@ -55,14 +55,14 @@ describe("search.web provider + cache", () => {
   });
 
   it("clamps maxResults to 8 and errors without an API key", async () => {
-    process.env.SEARCH_PROVIDER = "tavily";
-    delete process.env.TAVILY_API_KEY;
+    process.env.SEARCH_PROVIDER = "tavily"; // guard:allow-env-credential — test isolation
+    delete process.env.TAVILY_API_KEY; // guard:allow-env-credential — test isolation
     await expect(searchWeb("x", { maxResults: 50 })).rejects.toThrow(/TAVILY_API_KEY/);
   });
 
   it("maps SerpAPI organic_results", async () => {
-    process.env.SEARCH_PROVIDER = "serpapi";
-    process.env.SERPAPI_API_KEY = "sp_test";
+    process.env.SEARCH_PROVIDER = "serpapi"; // guard:allow-env-credential — test isolation
+    process.env.SERPAPI_API_KEY = "sp_test"; // guard:allow-env-credential — test isolation
     const fetchFn = (async (url: string | URL | Request) => {
       expect(String(url)).toContain("serpapi.com");
       return new Response(

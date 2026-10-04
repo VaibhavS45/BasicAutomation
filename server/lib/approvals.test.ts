@@ -13,24 +13,24 @@ let prevDataDir: string | undefined;
 let prevDryRun: string | undefined;
 
 beforeEach(async () => {
-  prevDataDir = process.env.DATA_DIR;
-  prevDryRun = process.env.DRY_RUN;
+  prevDataDir = process.env.DATA_DIR; // guard:allow-env-credential — test isolation
+  prevDryRun = process.env.DRY_RUN; // guard:allow-env-credential — test isolation
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), "approvals-test-"));
-  process.env.DATA_DIR = tmp;
-  process.env.DRY_RUN = "false";
+  process.env.DATA_DIR = tmp; // guard:allow-env-credential — test isolation
+  process.env.DRY_RUN = "false"; // guard:allow-env-credential — test isolation
 });
 
 afterEach(async () => {
-  if (prevDataDir === undefined) delete process.env.DATA_DIR;
-  else process.env.DATA_DIR = prevDataDir;
-  if (prevDryRun === undefined) delete process.env.DRY_RUN;
-  else process.env.DRY_RUN = prevDryRun;
+  if (prevDataDir === undefined) delete process.env.DATA_DIR; // guard:allow-env-credential — test isolation
+  else process.env.DATA_DIR = prevDataDir; // guard:allow-env-credential — test isolation
+  if (prevDryRun === undefined) delete process.env.DRY_RUN; // guard:allow-env-credential — test isolation
+  else process.env.DRY_RUN = prevDryRun; // guard:allow-env-credential — test isolation
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
 describe("requireApproval", () => {
   it("DRY_RUN short-circuits approved without touching the network or disk", async () => {
-    process.env.DRY_RUN = "true";
+    process.env.DRY_RUN = "true"; // guard:allow-env-credential — test isolation
     const decision = await requireApproval({
       action: "gmail.send",
       summary: "send test",

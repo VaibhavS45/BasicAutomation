@@ -23,6 +23,9 @@ const envSchema = z.object({
   TRIGGER_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
   TRIGGER_EMAIL_ALLOWLIST: z.string().optional(),
   GITHUB_BOT_LOGIN: z.string().optional(),
+  // Deploy-level Gmail trigger setting (read by server/plugins/triggers.ts;
+  // the poller itself stays in Yashwanth's server/triggers/gmail.ts).
+  GMAIL_TRIGGER_LABEL: z.string().optional(),
 
   // --- github ---
   GITHUB_TOKEN: z.string().optional(),
@@ -40,6 +43,13 @@ const envSchema = z.object({
   // --- composio (v2 connector layer) ---
   COMPOSIO_API_KEY: z.string().optional(),
   COMPOSIO_API: z.string().default("https://backend.composio.dev/api/v3.1"),
+
+  // --- gmail trigger boot check (server/plugins/triggers.ts) ---
+  // Deploy-level Google OAuth settings. The OAuth flow + token store stay in
+  // Yashwanth's server/lib/google-auth.ts; the plugin only checks presence.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  GOOGLE_TOKEN_STORE_PATH: z.string().optional(),
 
   // --- research port (Phase 6, optional) ---
   NOTION_TOKEN: z.string().optional(),

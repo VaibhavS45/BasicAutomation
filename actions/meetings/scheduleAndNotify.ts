@@ -4,10 +4,10 @@
 // calendar.createEvent and whatsapp.send actions, so the user approves the
 // whole plan once instead of once per side effect.
 import { randomUUID } from "node:crypto";
-import { defineAction } from "@agent-native/core/action";
+import { defineAction, type ActionRunContext } from "@agent-native/core/action";
 import { z } from "zod";
 import { audit } from "../../server/lib/audit.js";
-import { requireApproval } from "../../server/lib/approvals.js";
+import { isChatApproved, requireApproval } from "../../server/lib/approvals.js";
 import {
   buildMimeMessage,
   CALENDAR_BASE,
@@ -89,11 +89,13 @@ export default defineAction({
       .optional()
       .describe("Extra note to send by Gmail; needs sendEmailInvite"),
   }),
-  // Deliberately NOT `needsApproval: true`: that framework gate would prompt
-  // with the raw input only, and the input is not the full plan (the WhatsApp
-  // numbers and message text are derived after the event insert). The single
-  // requireApproval() below is the one card, and it shows every side effect.
-  run: async (args): Promise<ActionResult> => {
+  // The framework's chat approval card is the only approval UI. The input
+  // itself lists every side effect (event title/time, attendee emails,
+  // WhatsApp numbers, message text), so `needsApproval: true` shows the full
+  // plan in chat. The file-based requireApproval() below runs only for
+  // trigger/script calls with no chat (no ctx.approvedToolCallKey).
+  needsApproval: true,
+  run: async (args, ctx?: ActionRunContext): Promise<ActionResult> => {
     const tz = args.timeZone ?? defaultTimeZone();
     const startMs = new Date(args.start).getTime();
     const start = new Date(startMs).toISOString();
@@ -126,24 +128,30 @@ export default defineAction({
       return { ok: true, data: outcome };
     }
 
-    const decision = await requireApproval({
-      action: "meetings.scheduleAndNotify",
-      summary:
-        `Create "${args.title}" ${start} -> ${end} (${tz}) with Meet link; ` +
-        `${emails.length ? `invite ${emails.join(", ")} by email; ` : ""}` +
-        `${args.message ? `email the note "${args.message}"; ` : ""}` +
-        `${mobiles.length ? `WhatsApp ${templateName()} to ${mobiles.map((a) => a.whatsapp).join(", ")}` : ""}`,
-      payload: plan,
-    });
-    if (!decision.approved) {
-      const error = `Not approved (${decision.reason ?? "denied"}). Nothing was scheduled.`;
-      await audit({
-        actor: "agent",
+    // Chat path already gated by the framework card (ctx.approvedToolCallKey).
+    // Trigger/script runs with no chat still go through the file gate, with
+    // a summary listing every side effect: event, attendees, WhatsApp
+    // numbers, and message text.
+    if (!isChatApproved(ctx)) {
+      const decision = await requireApproval({
         action: "meetings.scheduleAndNotify",
-        input: plan,
-        outcome: { ok: false, error },
+        summary:
+          `Create "${args.title}" ${start} -> ${end} (${tz}) with Meet link; ` +
+          `${emails.length ? `invite ${emails.join(", ")} by email; ` : ""}` +
+          `${args.message ? `email the note "${args.message}"; ` : ""}` +
+          `${mobiles.length ? `WhatsApp ${templateName()} to ${mobiles.map((a) => a.whatsapp).join(", ")}` : ""}`,
+        payload: plan,
       });
-      return { ok: false, error };
+      if (!decision.approved) {
+        const error = `Not approved (${decision.reason ?? "denied"}). Nothing was scheduled.`;
+        await audit({
+          actor: "agent",
+          action: "meetings.scheduleAndNotify",
+          input: plan,
+          outcome: { ok: false, error },
+        });
+        return { ok: false, error };
+      }
     }
 
     // (1) event + Meet link. Google emails the invites via sendUpdates.

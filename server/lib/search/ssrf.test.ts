@@ -117,7 +117,7 @@ describe("fetchPageSafe SSRF guards", () => {
   });
 
   it("caps oversized pages and marks truncated", async () => {
-    process.env.FETCH_PAGE_MAX_BYTES = "100";
+    process.env.FETCH_PAGE_MAX_BYTES = "100"; // guard:allow-env-credential — test isolation
     try {
       const fetchFn = (async () => htmlResponse(`<p>${"x".repeat(500)}</p>`)) as typeof fetch;
       const out = await fetchPageSafe("https://public.example/big", {
@@ -127,7 +127,7 @@ describe("fetchPageSafe SSRF guards", () => {
       expect(out.truncated).toBe(true);
       expect(Buffer.byteLength(out.html, "utf8")).toBeLessThanOrEqual(100);
     } finally {
-      delete process.env.FETCH_PAGE_MAX_BYTES;
+      delete process.env.FETCH_PAGE_MAX_BYTES; // guard:allow-env-credential — test isolation
     }
   });
 });
