@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { env } from "./env.js";
+import { redactSecretsInText } from "./redact.js";
 
 export interface AuditInput {
   actor: string;
@@ -11,7 +12,15 @@ export interface AuditInput {
 
 export const SECRET_KEY_PATTERN = /token|secret|key|password|authorization/i;
 
+/**
+ * Two-layer redaction (approvals.ts inherits both layers through this call):
+ * secret-NAMED keys become "[REDACTED]" as before, and every other string
+ * additionally passes the content scrub (redactSecretsInText), which masks
+ * credential-SHAPED values (key prefixes, Bearer tokens, PEM blocks,
+ * key=value pairs, URL userinfo) wherever they hide.
+ */
 export function redactSecrets(value: unknown): unknown {
+  if (typeof value === "string") return redactSecretsInText(value);
   if (Array.isArray(value)) return value.map(redactSecrets);
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};

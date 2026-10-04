@@ -9,7 +9,7 @@ import {
   setAgentRunner,
   setRunnerDeps,
 } from "./engine.js";
-import { isAllowed } from "./grants.js";
+import { assertToolAllowed, isAllowed } from "./grants.js";
 import { getPlaybook } from "./playbooks.js";
 import type { TriggerEvent } from "../lib/types.js";
 
@@ -140,6 +140,40 @@ describe("trigger engine", () => {
     await expect(
       invokePlaybookTool("github.issue.opened", "GMAIL_SEND_EMAIL", async () => "sent"),
     ).rejects.toThrow(/not granted/);
+  });
+
+  it("denies COMPOSIO_MULTI_EXECUTE_TOOL calls naming an ungranted slug", async () => {
+    const granted = {
+      tools: [{ tool_slug: "GMAIL_FETCH_EMAILS", arguments: {} }],
+    };
+    // Exact allowlist hit first: GMAIL_FETCH_EMAILS is granted to email.received…
+    expect(() =>
+      assertToolAllowed("email.received", "GMAIL_FETCH_EMAILS"),
+    ).not.toThrow();
+    // …and the same slug wrapped in the executor stays allowed.
+    expect(() =>
+      assertToolAllowed("email.received", "COMPOSIO_MULTI_EXECUTE_TOOL", granted),
+    ).not.toThrow();
+    // An ungranted slug smuggled inside the wrapper is denied.
+    expect(() =>
+      assertToolAllowed("email.received", "COMPOSIO_MULTI_EXECUTE_TOOL", {
+        tools: [
+          { tool_slug: "GMAIL_FETCH_EMAILS", arguments: {} },
+          { tool_slug: "GMAIL_SEND_EMAIL", arguments: {} },
+        ],
+      }),
+    ).toThrow(/GMAIL_SEND_EMAIL.*not granted/);
+    // Unreadable wrapper shapes are denied, never passed through.
+    expect(() =>
+      assertToolAllowed("email.received", "COMPOSIO_MULTI_EXECUTE_TOOL", { tools: [] }),
+    ).toThrow(/could not be verified/);
+    expect(() =>
+      assertToolAllowed("email.received", "COMPOSIO_MULTI_EXECUTE_TOOL"),
+    ).toThrow(/could not be verified/);
+    // Unknown playbooks deny wrapped calls too (no legacy allow-all).
+    expect(() =>
+      assertToolAllowed("nope.unknown", "COMPOSIO_MULTI_EXECUTE_TOOL", granted),
+    ).toThrow(/not granted/);
   });
 
   it("an injection string in the payload does not widen tool access", async () => {
