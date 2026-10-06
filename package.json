@@ -34,6 +34,7 @@
     "@react-router/fs-routes": "8.1.0",
     "@tabler/icons-react": "3.44.0",
     "@tanstack/react-query": "^5.99.2",
+    "@xyflow/react": "^12.12.0",
     "ai": "6.0.258",
     "ai-sdk-ollama": "^3.8.8",
     "h3": "^2.0.1-rc.20",
