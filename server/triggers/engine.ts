@@ -25,6 +25,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { env } from "../lib/env.js";
 import { audit } from "../lib/audit.js";
+import { finishNode, registerNode, updateNode } from "../lib/fleet.js";
 import type { TriggerEvent } from "../lib/types.js";
 import { assertToolAllowed, allowedToolsFor } from "./grants.js";
 import { getPlaybook } from "./playbooks.js";
@@ -202,6 +203,16 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
   // (2) Load + wrap only the allowlisted actions.
   const loaded = await runnerDeps.loadTriggerActions(effective);
   const toolsUsed: string[] = [];
+  const controller = new AbortController();
+  // H4 fleet: one live node per trigger run — cancel via fleet.cancel(l).
+  registerNode({
+    id: runId,
+    profile: req.playbook,
+    title: req.event.summary.slice(0, 200),
+    runId,
+    abort: () => controller.abort(),
+  });
+  updateNode(runId, { status: "running", currentStep: "agent turn started" });
   const actions: Record<string, { tool: unknown; run: (args: unknown, ctx?: unknown) => Promise<unknown> }> = {};
   for (const [name, entry] of Object.entries(loaded)) {
     assertToolAllowed(req.playbook, name);
@@ -213,6 +224,7 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
       run: async (args: unknown, ctx?: unknown) => {
         assertToolAllowed(req.playbook, name);
         toolsUsed.push(name);
+        updateNode(runId, { toolsUsed: [...toolsUsed], currentStep: `called ${name}` });
         return inner(args, ctx);
       },
     };
@@ -231,6 +243,7 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
       input: { id: req.event.id, playbook: req.playbook },
       outcome: { ok: false, error, toolsUsed, runId },
     });
+    finishNode(runId, "failed", error.slice(0, 2000));
     return { ok: false, error, runId };
   }
   const engine = detected.create({});
@@ -238,7 +251,6 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
   // (4) The turn. Approval hook pauses writes into pending approvals.
   const pendingApprovals: string[] = [];
   let responseText = "";
-  const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TRIGGER_RUN_TIMEOUT_MS);
   try {
     const usage = await runnerDeps.runTriggerLoop({
@@ -266,12 +278,14 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
           payload: { playbook: req.playbook, tool: binding.toolName, input: binding.input },
         });
         pendingApprovals.push(approvalId);
+        updateNode(runId, { status: "waiting_approval", currentStep: `waiting approval for ${binding.toolName}` });
         return approvalId;
       },
     });
     const summary =
       (responseText.trim() || `completed with ${toolsUsed.length} tool call(s)`) +
       (pendingApprovals.length > 0 ? ` [approval pending: ${pendingApprovals.join(", ")}]` : "");
+    finishNode(runId, "done", summary.slice(0, 2000));
     await audit({
       actor,
       action: "trigger.run-end",
@@ -288,6 +302,7 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
     return { ok: true, summary: summary.slice(0, 2000), runId };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
+    finishNode(runId, "failed", error.slice(0, 2000));
     await audit({
       actor,
       action: "trigger.run-end",

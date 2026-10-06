@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { env } from "./env.js";
-import { redactSecrets } from "./audit.js";
+import { audit, redactSecrets } from "./audit.js";
 
 export interface RequireApprovalInput {
   action: string;
@@ -207,4 +207,119 @@ export async function denyApproval(
   reason = "denied",
 ): Promise<void> {
   await resolveApproval(id, false, reason);
+}
+
+// --- H4 approvals API: list + decide ------------------------------------------
+// Gap closed: a paused trigger-run approval used to be only a JSON file with
+// no UI. These functions back the approvals.list/approve/deny actions (and
+// the chat UI): deciding flips the file status, the paused requireApproval()
+// poll loop (or the framework's approval waiter) observes the flip and
+// resumes or rejects the paused action, and every decision writes an audit
+// entry. Decisions are exactly-once: a second decide on a resolved id is
+// rejected with `already <status>` and changes nothing.
+
+export interface ApprovalSummary {
+  id: string;
+  action: string;
+  summary: string;
+  /** Redacted at write time (createPendingApproval); re-scrubbed on read. */
+  payload: unknown;
+  status: "pending" | "approved" | "denied" | "expired";
+  createdAt: string;
+  expiresAt: number;
+  reason?: string;
+}
+
+function liveStatus(record: ApprovalRecord): ApprovalSummary["status"] {
+  if (record.status === "pending" && Date.now() >= record.expiresAt) return "expired";
+  return record.status;
+}
+
+function toSummary(record: ApprovalRecord): ApprovalSummary {
+  return {
+    id: record.id,
+    action: record.action,
+    summary: record.summary,
+    payload: redactSecrets(record.payload),
+    status: liveStatus(record),
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt,
+    ...(record.reason ? { reason: record.reason } : {}),
+  };
+}
+
+async function readAllRecords(): Promise<ApprovalRecord[]> {
+  let files: string[];
+  try {
+    files = await fs.readdir(approvalsDir());
+  } catch {
+    return [];
+  }
+  const out: ApprovalRecord[] = [];
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const record = JSON.parse(await fs.readFile(path.join(approvalsDir(), file), "utf8")) as ApprovalRecord;
+      if (record && typeof record.id === "string") out.push(record);
+    } catch {
+      // A half-written file is skipped, never fatal.
+    }
+  }
+  return out;
+}
+
+/** List approvals, newest first. `status: "pending"` (default) or `"all"`. */
+export async function listApprovals(status: "pending" | "all" = "pending"): Promise<ApprovalSummary[]> {
+  const records = await readAllRecords();
+  const summaries = records.map(toSummary).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  if (status === "all") return summaries;
+  return summaries.filter((s) => s.status === "pending");
+}
+
+export async function getApproval(id: string): Promise<ApprovalSummary | null> {
+  const record = await readRecord(id);
+  return record ? toSummary(record) : null;
+}
+
+export interface DecideApprovalInput {
+  reason?: string;
+  actor?: string;
+}
+
+export interface DecideApprovalOutcome {
+  ok: boolean;
+  status?: ApprovalSummary["status"];
+  error?: string;
+}
+
+/**
+ * Decide a pending approval exactly once. Flipping the file is what resumes
+ * (approved) or rejects (denied) the paused action — the waiter polls this
+ * file. A second decide is rejected and audited; state never changes twice.
+ */
+export async function decideApproval(
+  id: string,
+  approved: boolean,
+  input: DecideApprovalInput = {},
+): Promise<DecideApprovalOutcome> {
+  const actor = input.actor ?? "human";
+  const record = await readRecord(id);
+  if (!record) {
+    await audit({ actor, action: "approvals.decide-rejected", input: { id, approved }, outcome: { ok: false, error: "not found" } });
+    return { ok: false, error: `approval not found: ${id}` };
+  }
+  const current = liveStatus(record);
+  if (current !== "pending") {
+    await audit({ actor, action: "approvals.decide-rejected", input: { id, approved }, outcome: { ok: false, error: `already ${current}` } });
+    return { ok: false, status: current, error: `approval ${id} is already ${current}` };
+  }
+  const reason = input.reason ?? (approved ? "approved" : "denied");
+  await writeRecord({ ...record, status: approved ? "approved" : "denied", reason });
+  await audit({
+    actor,
+    action: approved ? "approvals.approved" : "approvals.denied",
+    input: { id, action: record.action, summary: record.summary },
+    outcome: { ok: true, status: approved ? "approved" : "denied", reason },
+  });
+  return { ok: true, status: approved ? "approved" : "denied" };
 }
