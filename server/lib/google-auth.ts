@@ -236,10 +236,12 @@ export class GoogleApiError extends Error {
 
 export async function googleFetch(
   url: string,
-  opts: RequestInit = {},
+  opts: RequestInit & { responseType?: "json" | "text" } = {},
   e: Env = process.env,
   fetchFn: FetchFn = fetch,
 ): Promise<unknown> {
+  const { responseType, ...init } = opts;
+  const wantText = responseType === "text";
   let token = await getAccessToken(e, fetchFn);
   for (let attempt = 0; attempt < 3; attempt++) {
     const headers = new Headers(opts.headers);
@@ -247,9 +249,9 @@ export async function googleFetch(
     let res: Response;
     try {
       res = await fetchFn(url, {
-        ...opts,
+        ...init,
         headers,
-        signal: opts.signal ?? AbortSignal.timeout(30_000),
+        signal: init.signal ?? AbortSignal.timeout(30_000),
       });
     } catch (err) {
       if (attempt === 2) throw err;
@@ -275,6 +277,13 @@ export async function googleFetch(
       continue;
     }
     if (res.status === 204) return null;
+    if (wantText) {
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.statusText);
+        throw new GoogleApiError(res.status, errText.slice(0, 300));
+      }
+      return res.text();
+    }
     const data = (await res.json().catch(() => null)) as {
       error?: { message?: string };
     } | null;
