@@ -16,6 +16,7 @@ import {
   assertSpawnDepthAllowed,
   assertWorkerToolAllowed,
 } from "../triggers/grants.js";
+import { budgetAllowsSpawn, getBudget } from "./budget.js";
 
 // --- capability tokens -------------------------------------------------------
 
@@ -119,13 +120,11 @@ export function resetHeadAgentForTests(): void {
   turnSpawnCounts.clear();
 }
 
-/** Acquire a worker slot; throws at maxConcurrentWorkers (H1: 3). */
+/** Acquire a worker slot; throws at the budget's max workers, on kill, or on daily cap. */
 export function acquireWorkerSlot(): void {
-  if (activeWorkers >= HEAD_AGENT_LIMITS.maxConcurrentWorkers) {
-    throw new Error(
-      `Too many concurrent workers (max ${HEAD_AGENT_LIMITS.maxConcurrentWorkers}); ` +
-        `queue the remaining spawns until a worker finishes.`,
-    );
+  const verdict = budgetAllowsSpawn(activeWorkers);
+  if (!verdict.ok) {
+    throw new Error(verdict.error);
   }
   activeWorkers += 1;
 }
@@ -213,13 +212,13 @@ export function planHeadTurn(input: PlanHeadTurnInput): HeadTurnPlan {
       phase: 1,
     });
   }
-  if (phase1.length > HEAD_AGENT_LIMITS.maxConcurrentWorkers) {
+  if (phase1.length > getBudget().maxConcurrentWorkers) {
     return {
       ok: false,
       phases: [],
       error:
         `That needs ${phase1.length} parallel workers but I can run at most ` +
-        `${HEAD_AGENT_LIMITS.maxConcurrentWorkers} at once. ` +
+        `${getBudget().maxConcurrentWorkers} at once. ` +
         `Drop a capability or split the request and I'll go step by step.`,
     };
   }
@@ -288,4 +287,13 @@ Reading results:
 Talking to the user:
 - Return ONE summary naming what each worker did, with sources. Ask the user ONE clarifying question ONLY when truly blocked (missing target, ambiguous irreversible action); otherwise make a reasonable choice and state your assumption.
 - Anything that sends, posts, publishes, or leaves the machine is PROPOSED, not performed: describe exactly what would happen and wait for approval (needsApproval:true). DRY_RUN is on by default in dev: propose drafts/pages instead of creating them, and say so.
-- Never present a draft as sent, a proposal as published, or a guess as verified. If a tool failed or data is missing, say so.`;
+- Never present a draft as sent, a proposal as published, or a guess as verified. If a tool failed or data is missing, say so.
+
+Memory (plain files, DATA_DIR/memory/*.md):
+- At the start of a turn, call memory.list then memory.read on anything relevant — durable user context lives there, not in your working context.
+- Append learnings with memory.append ONLY with approval, and never store secrets (writes are scrubbed, but don't test that with real credentials).
+
+Schedules (framework recurring-jobs, jobs/*.md):
+- "Run this prompt every weekday 8am" -> schedules.create with when:"every weekday 8am" (also: "every day 7am", "every monday 9am", "every hour", or raw cron). Confirm the cadence before creating.
+- Scheduled runs default to dryRun:true (propose, don't perform). Only flip schedules.setDryRun to false when the user explicitly asks for live runs.
+- Listing, pausing, and deleting live in the Automations surface — point the user there, don't reimplement it.`;

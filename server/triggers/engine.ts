@@ -286,6 +286,9 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
       (responseText.trim() || `completed with ${toolsUsed.length} tool call(s)`) +
       (pendingApprovals.length > 0 ? ` [approval pending: ${pendingApprovals.join(", ")}]` : "");
     finishNode(runId, "done", summary.slice(0, 2000));
+    // H7d: ledger this turn's tokens; overages ride along in the audit trail.
+    const { recordTokenUsage } = await import("../lib/budget.js");
+    const budget = await recordTokenUsage(usage.inputTokens, usage.outputTokens);
     await audit({
       actor,
       action: "trigger.run-end",
@@ -295,6 +298,12 @@ async function defaultRunner(req: AgentRunRequest): Promise<AgentRunResult> {
         toolsUsed,
         pendingApprovals,
         usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, model: usage.model },
+        budget: {
+          runTotal: budget.runTotal,
+          dailyTotal: budget.dailyTotal,
+          overPerRunCap: budget.overPerRunCap,
+          overDailyCap: budget.overDailyCap,
+        },
         responseChars: responseText.length,
         runId,
       },

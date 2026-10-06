@@ -13,6 +13,8 @@ const INITIAL_TOOL_NAMES = [
   "navigate",
   "hello",
   "system.ping",
+  "memory.list",
+  "memory.read",
   "connectors.status",
   "connectors.connect",
   "connectors.listTools",

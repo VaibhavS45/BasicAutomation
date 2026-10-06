@@ -66,3 +66,63 @@ export async function audit(input: AuditInput): Promise<void> {
     console.error("[audit] failed to append:", err);
   }
 }
+
+export interface AuditEntry {
+  at: string;
+  actor: string;
+  action: string;
+  input: unknown;
+  outcome: unknown;
+}
+
+export interface AuditQuery {
+  /** Substring search over the whole entry (actor, action, payloads). */
+  q?: string;
+  /** Substring match on the action name, e.g. "gmail" or "trigger". */
+  action?: string;
+  /** Substring match on the actor. */
+  actor?: string;
+  /** Filter by outcome.ok (entries without an ok flag never match). */
+  ok?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Searchable read of the JSONL log, newest first. Skips malformed lines;
+ * never throws (returns what parsed).
+ */
+export async function queryAudit(query: AuditQuery = {}): Promise<{ entries: AuditEntry[]; total: number }> {
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+  const offset = Math.max(query.offset ?? 0, 0);
+  let lines: string[];
+  try {
+    const raw = await fs.readFile(path.join(dataDir(), "audit.jsonl"), "utf8");
+    lines = raw.split("\n");
+  } catch {
+    return { entries: [], total: 0 };
+  }
+  const q = query.q?.toLowerCase();
+  const action = query.action?.toLowerCase();
+  const actor = query.actor?.toLowerCase();
+  const matched: AuditEntry[] = [];
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let entry: AuditEntry;
+    try {
+      entry = JSON.parse(line) as AuditEntry;
+    } catch {
+      continue;
+    }
+    if (action && !String(entry.action ?? "").toLowerCase().includes(action)) continue;
+    if (actor && !String(entry.actor ?? "").toLowerCase().includes(actor)) continue;
+    if (query.ok !== undefined) {
+      const ok = (entry.outcome as { ok?: unknown } | null)?.ok;
+      if (ok !== query.ok) continue;
+    }
+    if (q && !JSON.stringify(entry).toLowerCase().includes(q)) continue;
+    matched.push(entry);
+  }
+  return { entries: matched.slice(offset, offset + limit), total: matched.length };
+}

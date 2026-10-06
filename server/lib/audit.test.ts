@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { audit, redactSecrets } from "./audit.js";
+import { audit, queryAudit, redactSecrets } from "./audit.js";
 
 let tmp: string;
 let prevDataDir: string | undefined;
@@ -54,5 +54,30 @@ describe("audit", () => {
     expect((first.input as Record<string, unknown>).to).toBe("a@example.com");
     expect((first.input as Record<string, unknown>).access_token).toBe("[REDACTED]");
     expect(raw).not.toContain("sekret");
+  });
+});
+
+describe("queryAudit", () => {
+  it("searches newest-first with action/actor/outcome filters", async () => {
+    await audit({ actor: "alice", action: "gmail.send", input: {}, outcome: { ok: true } });
+    await audit({ actor: "bob", action: "trigger.completed", input: {}, outcome: { ok: false, error: "boom" } });
+    await audit({ actor: "alice", action: "gmail.read", input: { q: "acme invoice" }, outcome: { ok: true } });
+
+    const all = await queryAudit({});
+    expect(all.total).toBe(3);
+    expect(all.entries[0].action).toBe("gmail.read"); // newest first
+
+    expect((await queryAudit({ action: "gmail" })).total).toBe(2);
+    expect((await queryAudit({ actor: "bob" })).entries[0].action).toBe("trigger.completed");
+    expect((await queryAudit({ ok: false })).total).toBe(1);
+    expect((await queryAudit({ q: "acme invoice" })).total).toBe(1);
+    expect((await queryAudit({ q: "nothing-here" })).total).toBe(0);
+    const page = await queryAudit({ limit: 1, offset: 1 });
+    expect(page.entries).toHaveLength(1);
+    expect(page.total).toBe(3);
+  });
+
+  it("returns empty when there is no log yet", async () => {
+    expect(await queryAudit({})).toEqual({ entries: [], total: 0 });
   });
 });
