@@ -43,6 +43,7 @@ export const CUSTOM_ACTIONS = {
   searchWeb: "search.web",
   searchFetchPage: "search.fetchPage",
   meetingsScheduleAndNotify: "meetings.scheduleAndNotify",
+  researchGenerate: "research.generate",
   githubGetIssue: "github.getIssue",
   githubListIssues: "github.listIssues",
   githubGetPullRequest: "github.getPullRequest",
@@ -116,6 +117,17 @@ export const PLAYBOOK_GRANTS: Record<string, PlaybookGrant> = {
       CUSTOM_ACTIONS.githubGetPullRequest,
       CUSTOM_ACTIONS.githubCommentOnIssue,
       CUSTOM_ACTIONS.searchWeb,
+    ],
+  },
+  // V-6 research port: read-only web context + the deterministic file/Notion
+  // writer. No mail/WhatsApp sends, no GitHub writes, no calendar creates —
+  // a research run can never book, send, or comment.
+  "calendar.research.requested": {
+    composio: [...READ_ONLY.drive, ...READ_ONLY.calendar],
+    custom: [
+      CUSTOM_ACTIONS.searchWeb,
+      CUSTOM_ACTIONS.searchFetchPage,
+      CUSTOM_ACTIONS.researchGenerate,
     ],
   },
 };

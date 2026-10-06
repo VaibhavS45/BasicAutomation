@@ -78,6 +78,7 @@ const TRIGGER_ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   "github.createIssue": () => import("../../actions/github.createIssue.js"),
   "github.commentOnIssue": () => import("../../actions/github.commentOnIssue.js"),
   "github.submitReview": () => import("../../actions/github.submitReview.js"),
+  "research.generate": () => import("../../actions/research.generate.js"),
 };
 
 /** Wall-clock ceiling for one trigger agent turn (abort, audited, no hang). */

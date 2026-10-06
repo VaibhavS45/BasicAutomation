@@ -5,6 +5,7 @@ export interface TriggerEvent {
   source: TriggerSource;
   type: string; // "email.received" | "github.issue.opened" | "github.pr.opened"
   // | "github.pr.review_requested" | "github.issue_comment.created"
+  // | "calendar.research.requested"
   receivedAt: string; // ISO 8601
   actor?: string; // email sender or github login
   summary: string; // one line for logs

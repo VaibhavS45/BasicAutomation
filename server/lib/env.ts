@@ -54,6 +54,13 @@ const envSchema = z.object({
   // --- research port (Phase 6, optional) ---
   NOTION_TOKEN: z.string().optional(),
   NOTION_PARENT_PAGE_ID: z.string().optional(),
+
+  // --- calendar research poller (Phase V-6) ---
+  CALENDAR_RESEARCH_POLL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // --- rate limits (Phase V-7) ---
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

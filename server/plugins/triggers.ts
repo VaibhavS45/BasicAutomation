@@ -5,10 +5,15 @@
 // GMAIL_TRIGGER_LABEL set — and only then starts polling. Startup is never
 // blocked; shutdown stops the poller. Every path logs exactly one line.
 import { defineNitroPlugin } from "@agent-native/core/server";
+import { onShutdown } from "../lib/shutdown.js";
 
 const BOOT_DELAY_MS = 5000;
 
 interface GmailHandle {
+  stop: () => void;
+}
+
+interface ResearchHandle {
   stop: () => void;
 }
 
@@ -53,6 +58,7 @@ async function googleAuthConfigured(): Promise<{ ok: true } | { ok: false; reaso
 export default defineNitroPlugin((nitroApp) => {
   const bootStarted = Date.now();
   let handle: GmailHandle | null = null;
+  let researchHandle: ResearchHandle | null = null;
   let stopped = false;
 
   const timer = setTimeout(() => {
@@ -72,7 +78,24 @@ export default defineNitroPlugin((nitroApp) => {
         handle = await startGmailTrigger(async (event) => {
           await emit(event);
         });
+        // V-7 graceful shutdown: registry stops pollers on SIGTERM/SIGINT.
+        onShutdown("gmail-trigger", () => handle?.stop());
         console.log("[triggers] gmail trigger started");
+        // V-6 research port: same Google OAuth gate, own poller. Failure here
+        // never takes down the gmail poller or boot.
+        try {
+          const { startCalendarResearchTrigger } = await import("../triggers/calendar.js");
+          if (stopped) return;
+          researchHandle = await startCalendarResearchTrigger(async (event) => {
+            await emit(event);
+          });
+          onShutdown("calendar-research-trigger", () => researchHandle?.stop());
+          console.log("[triggers] calendar research trigger started");
+        } catch (err) {
+          console.log(
+            `[triggers] calendar research trigger skipped: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       } catch (err) {
         // Never let a trigger failure take down boot or crash the process.
         console.log(
@@ -91,6 +114,11 @@ export default defineNitroPlugin((nitroApp) => {
       clearTimeout(timer);
       try {
         handle?.stop();
+      } catch {
+        // Shutdown best-effort; already stopping.
+      }
+      try {
+        researchHandle?.stop();
       } catch {
         // Shutdown best-effort; already stopping.
       }

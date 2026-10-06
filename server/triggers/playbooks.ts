@@ -98,6 +98,17 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     allowedActions: allowedToolsFor("github.issue_comment.created"),
     buildPrompt: buildGithubPrompt,
   },
+  // V-6 research port: gather web context, then materialize the brief with
+  // research.generate (idempotent — reruns reuse the same file/page).
+  "calendar.research.requested": {
+    systemInstructions: baseInstructions(
+      "Research the calendar event topic: search the web for context, then " +
+        "call research.generate exactly once with the calendarEventId and topic. " +
+        "Never create calendar events, send mail, or comment on GitHub.",
+    ),
+    allowedActions: allowedToolsFor("calendar.research.requested"),
+    buildPrompt: buildGithubPrompt,
+  },
 };
 
 export function listPlaybookTypes(): string[] {
