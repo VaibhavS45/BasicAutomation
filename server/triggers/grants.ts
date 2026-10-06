@@ -59,6 +59,80 @@ export interface PlaybookGrant {
   custom: string[];
 }
 
+// --- H1 head agent ("first mate") worker grants --------------------------------
+// Workers spawn via spawnTask() with inline systemPrompt + curated actions
+// (see server/lib/head-agent.ts and agents/*.md). The `tools: inherit`
+// frontmatter on the profiles is framework-reserved and ignored in the spawn
+// path, so THIS table is the real enforcement point (deny by default).
+//
+// Entries may be exact action names ("gmail.search") or a namespace wildcard
+// ("notion.*", owned by H2; "browser.*", owned by H3) matching `<ns>.<anything>`.
+// Wildcards exist so H2/H3 can add tools without Vaibhav editing their files —
+// the namespace boundary itself never widens from payload text.
+export const WORKER_GRANTS: Record<string, string[]> = {
+  // H1: search + read + draft ONLY. No gmail.send / gmail.reply, ever.
+  "gmail-agent": ["gmail.search", "gmail.read", "gmail.draft"],
+  // H1: browse/fetch only (H3 owns browser.* additions). No write tools of any kind.
+  "browser-agent": ["search.web", "search.fetchPage", "browser.*"],
+  // H1: notion.* (H2) only.
+  "notion-agent": ["notion.*"],
+  // H1: search.web + search.fetchPage; writes nothing.
+  researcher: ["search.web", "search.fetchPage"],
+};
+
+/** Head-agent fan-out limits (H1 acceptance: max 3 concurrent / depth 1 / run cap). */
+export const HEAD_AGENT_LIMITS = {
+  /** Max workers running at once (same pattern as TRIGGER_MAX_CONCURRENT_RUNS). */
+  maxConcurrentWorkers: 3,
+  /** Workers cannot spawn workers: a spawn at depth >= 1 is refused. */
+  maxDelegationDepth: 1,
+  /** Max worker spawns per head-agent turn (runaway fan-out guard). */
+  maxWorkerSpawnsPerTurn: 5,
+} as const;
+
+/** Does a grant entry cover `tool`? Exact match, or `<ns>.*` prefix match. */
+export function workerGrantCovers(entry: string, tool: string): boolean {
+  if (entry === tool) return true;
+  if (entry.endsWith(".*")) {
+    const ns = entry.slice(0, -2);
+    return tool.startsWith(`${ns}.`);
+  }
+  return false;
+}
+
+/** Boundary check: is `tool` callable by `worker`? Deny by default. */
+export function isWorkerAllowed(worker: string, tool: string): boolean {
+  const grant = WORKER_GRANTS[worker];
+  if (!grant) return false;
+  return grant.some((entry) => workerGrantCovers(entry, tool));
+}
+
+/**
+ * Enforce the worker boundary. Throws when the tool is outside the worker
+ * grant, even if the request originated from untrusted content
+ * (prompt-injection strings never widen access — only this static table does).
+ */
+export function assertWorkerToolAllowed(worker: string, tool: string): void {
+  if (isWorkerAllowed(worker, tool)) return;
+  throw new Error(
+    `Tool "${tool}" is not granted to worker "${worker}" (deny by default).`,
+  );
+}
+
+/**
+ * Depth guard for worker spawns. The head agent runs at depth 0; a worker
+ * runs at depth 1 and may NOT spawn (workers have no agent-teams tool; this
+ * is the server-side backstop). Throws for any spawn at depth >= maxDepth.
+ */
+export function assertSpawnDepthAllowed(parentDepth: number): void {
+  if (parentDepth >= HEAD_AGENT_LIMITS.maxDelegationDepth) {
+    throw new Error(
+      `Delegation depth limit reached (max ${HEAD_AGENT_LIMITS.maxDelegationDepth}); ` +
+        `workers cannot spawn other workers.`,
+    );
+  }
+}
+
 /**
  * Which tools each trigger playbook may call. Least privilege:
  * - A GitHub-triggered run NEVER gets gmail/whatsapp send.
