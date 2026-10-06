@@ -6,13 +6,16 @@ const appTitle = rawAppTitle === "{" + "{APP_TITLE}}" ? "Chat" : rawAppTitle;
 /**
  * GitHub cannot sign in, so its webhook POST bypasses the session guard here
  * and is gated by OUR HMAC check in server/routes/webhooks/github.post.ts
- * instead. Keep this list to exactly this path: prefix matching also covers
- * /webhooks/github/*, nothing else.
+ * instead. /api/health is public too (load balancers + local-run checks must
+ * reach it without a session; it returns no secrets). Keep this list to
+ * exactly these paths: prefix matching also covers /webhooks/github/*.
  */
 export const GITHUB_WEBHOOK_PUBLIC_PATH = "/webhooks/github";
 
+export const HEALTH_PUBLIC_PATH = "/api/health";
+
 export default createAuthPlugin({
-  publicPaths: [GITHUB_WEBHOOK_PUBLIC_PATH],
+  publicPaths: [GITHUB_WEBHOOK_PUBLIC_PATH, HEALTH_PUBLIC_PATH],
   workspaceAppPublicPaths: ["/"],
   marketing: {
     appName: appTitle,
