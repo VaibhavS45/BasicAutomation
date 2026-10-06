@@ -6,6 +6,7 @@
 
 import { promises as dns } from "node:dns";
 import type { FetchFn } from "./providers.js";
+import { isDomainFetchable } from "../budget.js";
 import { env } from "../env.js";
 
 export type DnsLookup = (host: string) => Promise<string[]>;
@@ -102,6 +103,13 @@ export async function fetchPageSafe(
     }
     if (isBlockedHostname(parsed.hostname)) {
       throw new Error(`Refusing to fetch blocked host: ${parsed.hostname}`);
+    }
+    // H7d: when the safety panel lists allowed domains, @browser may fetch
+    // only those (checked per hop, so redirects can't escape the list).
+    if (!isDomainFetchable(parsed.hostname)) {
+      throw new Error(
+        `Refusing to fetch ${parsed.hostname}: not in the allowed-domains list (safety panel).`,
+      );
     }
     let addrs: string[];
     try {
